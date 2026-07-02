@@ -82,6 +82,11 @@ export interface Project {
   id: string;
   name: string;
   environments: Environment[];
+  /**
+   * Project-wide variables inherited by every environment. An environment's
+   * own variable with the same key overrides the global one.
+   */
+  globals: KeyValue[];
   /** The environment highlighted as "current" (cosmetic emphasis). */
   activeEnvId: string;
   /** Schema version, to ease future migrations. */

@@ -43,18 +43,22 @@ function UrlBar() {
   const update = useStore((s) => s.update);
   const send = useStore((s) => s.send);
   const saveScratchTab = useStore((s) => s.saveScratchTab);
-  // Resolve the environment (name + variables) for the linked tab.
-  const env = useStore((s) => {
+  // Resolve the environment + project globals for the linked tab.
+  const ctx = useStore((s) => {
     if (!tab.projectId || !tab.envId) return undefined;
     const project = s.projects.find((p) => p.id === tab.projectId);
-    return project?.environments.find((e) => e.id === tab.envId);
+    const env = project?.environments.find((e) => e.id === tab.envId);
+    return project && env ? { project, env } : undefined;
   });
-  const envName = env?.name;
+  const envName = ctx?.env.name;
 
-  // Live preview of the URL with {{variables}} resolved.
+  // Live preview of the URL with {{variables}} resolved (globals + env override).
   const resolvedUrl =
-    env && tab.url.includes("{{")
-      ? substitute(tab.url, buildVarMap(env.variables))
+    ctx && tab.url.includes("{{")
+      ? substitute(tab.url, {
+          ...buildVarMap(ctx.project.globals),
+          ...buildVarMap(ctx.env.variables),
+        })
       : null;
   const showPreview = resolvedUrl !== null && resolvedUrl !== tab.url;
 

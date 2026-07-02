@@ -96,6 +96,7 @@ function makeProject(name: string): Project {
     id: nanoid(),
     name,
     environments,
+    globals: [emptyRow()],
     activeEnvId: environments[0].id,
     version: 2,
   };
@@ -114,12 +115,16 @@ function normalizeProject(raw: any): [Project, boolean] {
     )
       ? raw.activeEnvId
       : environments[0].id;
-    // Flag a migration if any env was missing its variables array.
-    const migrated = raw.environments.some(
-      (e: any) => !Array.isArray(e?.variables) || e.variables.length === 0,
-    );
+    const hasGlobals = Array.isArray(raw.globals) && raw.globals.length > 0;
+    const globals = hasGlobals ? raw.globals : [emptyRow()];
+    // Flag a migration if any env lacked variables, or globals were missing.
+    const migrated =
+      !hasGlobals ||
+      raw.environments.some(
+        (e: any) => !Array.isArray(e?.variables) || e.variables.length === 0,
+      );
     return [
-      { ...raw, environments, activeEnvId, version: 2 } as Project,
+      { ...raw, environments, globals, activeEnvId, version: 2 } as Project,
       migrated,
     ];
   }
@@ -133,6 +138,7 @@ function normalizeProject(raw: any): [Project, boolean] {
     id: raw?.id ?? nanoid(),
     name: raw?.name ?? "Untitled Project",
     environments,
+    globals: [emptyRow()],
     activeEnvId: environments[0].id,
     version: 2,
   };
@@ -252,15 +258,16 @@ interface AppState {
   duplicateEnvironment: (projectId: string, envId: string) => void;
   setActiveEnv: (projectId: string, envId: string) => void;
 
-  // environment variables
-  varsEditor: { projectId: string; envId: string } | null;
-  openVarsEditor: (projectId: string, envId: string) => void;
+  // variables editor (envId present → environment vars; absent → project globals)
+  varsEditor: { projectId: string; envId?: string } | null;
+  openVarsEditor: (projectId: string, envId?: string) => void;
   closeVarsEditor: () => void;
   setEnvVariables: (
     projectId: string,
     envId: string,
     variables: KeyValue[],
   ) => void;
+  setProjectGlobals: (projectId: string, globals: KeyValue[]) => void;
 
   // nodes (scoped to an environment)
   addFolder: (projectId: string, envId: string, parentId: string | null) => void;
@@ -374,10 +381,14 @@ export const useStore = create<AppState>((set, get) => {
       if (!tab || !tab.url.trim()) return;
       get().update(id, { loading: true, error: undefined });
 
-      // Resolve {{variables}} against the request's own environment (if linked).
+      // Resolve {{variables}}: project globals first, then the request's own
+      // environment overrides them.
       const project = get().projects.find((p) => p.id === tab.projectId);
       const env = project?.environments.find((e) => e.id === tab.envId);
-      const vars = buildVarMap(env?.variables ?? []);
+      const vars = {
+        ...buildVarMap(project?.globals ?? []),
+        ...buildVarMap(env?.variables ?? []),
+      };
       const sub = (t: string) => substitute(t, vars);
 
       const headers = tab.headers
@@ -529,9 +540,10 @@ export const useStore = create<AppState>((set, get) => {
       persist(projectId);
     },
 
-    // ---- environment variables ----
+    // ---- variables editor ----
     varsEditor: null,
-    openVarsEditor: (projectId, envId) => set({ varsEditor: { projectId, envId } }),
+    openVarsEditor: (projectId, envId) =>
+      set({ varsEditor: { projectId, envId } }),
     closeVarsEditor: () => set({ varsEditor: null }),
 
     setEnvVariables: (projectId, envId, variables) => {
@@ -545,6 +557,15 @@ export const useStore = create<AppState>((set, get) => {
                 ),
               }
             : p,
+        ),
+      }));
+      persist(projectId);
+    },
+
+    setProjectGlobals: (projectId, globals) => {
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id === projectId ? { ...p, globals } : p,
         ),
       }));
       persist(projectId);

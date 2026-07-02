@@ -176,7 +176,7 @@ Local Windows builds require the WebView2 runtime and the MSVC C++ build tools.
 
 - [x] Environments (dev/stg/prod) — isolated request tree per environment
 - [x] Per-environment variables with `{{base_url}}` substitution
-- [ ] Project-level (global) variables that all environments inherit
+- [x] Project-level (global) variables inherited by all environments (env overrides)
 - [ ] Request history
 - [ ] Auth helpers (Bearer, Basic, API key)
 - [ ] Import/export Postman collections

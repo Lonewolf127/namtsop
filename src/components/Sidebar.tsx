@@ -270,8 +270,12 @@ function ProjectRow({
     addEnvironment,
     renameProject,
     deleteProject,
+    openVarsEditor,
   } = useStore();
   const open = expanded[project.id];
+  const globalCount = project.globals.filter(
+    (v) => v.key.trim() && v.enabled,
+  ).length;
 
   return (
     <div className="project">
@@ -290,7 +294,19 @@ function ProjectRow({
           }}
           onCancel={() => setRenamingId(null)}
         />
+        {globalCount > 0 && (
+          <span className="var-badge" title="Global variables">
+            {"{}"}
+            {globalCount}
+          </span>
+        )}
         <span className="node-actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            title="Global variables"
+            onClick={() => openVarsEditor(project.id)}
+          >
+            {"{}"}
+          </button>
           <button
             title="New environment"
             onClick={() => addEnvironment(project.id)}
