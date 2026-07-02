@@ -30,7 +30,9 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # pnpm 10+ reads settings (onlyBuiltDependencies) from
+          # pnpm-workspace.yaml without requiring a `packages:` field.
+          version: 10
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -42,6 +44,12 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+
+      # Ensure esbuild's platform binary is built (its install script is gated
+      # behind the onlyBuiltDependencies allowlist). Defensive: no-op if already
+      # built during install.
+      - name: Build native deps
+        run: pnpm rebuild esbuild
 
       # On a tag push this builds the installers AND publishes a GitHub Release
       # with them attached. On manual dispatch (no tag) it just builds.
