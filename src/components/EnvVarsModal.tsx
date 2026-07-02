@@ -15,20 +15,25 @@ export default function EnvVarsModal() {
   const setEnvVariables = useStore((s) => s.setEnvVariables);
   const setProjectGlobals = useStore((s) => s.setProjectGlobals);
 
-  const ctx = useStore((s) => {
-    if (!s.varsEditor) return undefined;
-    const project = s.projects.find((p) => p.id === s.varsEditor!.projectId);
-    if (!project) return undefined;
-    const env = s.varsEditor!.envId
-      ? project.environments.find((e) => e.id === s.varsEditor!.envId)
-      : undefined;
-    if (s.varsEditor!.envId && !env) return undefined;
-    return { project, env };
+  // Stable-reference selectors (never build a new object in a selector, or
+  // useSyncExternalStore loops infinitely).
+  const project = useStore((s) =>
+    s.varsEditor
+      ? s.projects.find((p) => p.id === s.varsEditor!.projectId)
+      : undefined,
+  );
+  const env = useStore((s) => {
+    const ed = s.varsEditor;
+    if (!ed || !ed.envId) return undefined;
+    return s.projects
+      .find((p) => p.id === ed.projectId)
+      ?.environments.find((e) => e.id === ed.envId);
   });
 
-  if (!editor || !ctx) return null;
-  const { project, env } = ctx;
-  const isGlobals = !env;
+  if (!editor || !project) return null;
+  // Editing an environment but it wasn't found → nothing to show.
+  if (editor.envId && !env) return null;
+  const isGlobals = !editor.envId;
 
   // For an environment editor, list globals it inherits but doesn't override.
   const inherited = env

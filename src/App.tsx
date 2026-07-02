@@ -43,21 +43,26 @@ function UrlBar() {
   const update = useStore((s) => s.update);
   const send = useStore((s) => s.send);
   const saveScratchTab = useStore((s) => s.saveScratchTab);
-  // Resolve the environment + project globals for the linked tab.
-  const ctx = useStore((s) => {
+  // Resolve the environment + project globals for the linked tab. Each selector
+  // returns a STABLE reference (a state object or undefined) — never a freshly
+  // built object — otherwise useSyncExternalStore loops infinitely.
+  const project = useStore((s) =>
+    tab.projectId ? s.projects.find((p) => p.id === tab.projectId) : undefined,
+  );
+  const env = useStore((s) => {
     if (!tab.projectId || !tab.envId) return undefined;
-    const project = s.projects.find((p) => p.id === tab.projectId);
-    const env = project?.environments.find((e) => e.id === tab.envId);
-    return project && env ? { project, env } : undefined;
+    return s.projects
+      .find((p) => p.id === tab.projectId)
+      ?.environments.find((e) => e.id === tab.envId);
   });
-  const envName = ctx?.env.name;
+  const envName = env?.name;
 
   // Live preview of the URL with {{variables}} resolved (globals + env override).
   const resolvedUrl =
-    ctx && tab.url.includes("{{")
+    project && env && tab.url.includes("{{")
       ? substitute(tab.url, {
-          ...buildVarMap(ctx.project.globals),
-          ...buildVarMap(ctx.env.variables),
+          ...buildVarMap(project.globals),
+          ...buildVarMap(env.variables),
         })
       : null;
   const showPreview = resolvedUrl !== null && resolvedUrl !== tab.url;
