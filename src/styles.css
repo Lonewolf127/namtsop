@@ -190,6 +190,32 @@ button {
   line-height: 1.5;
   font-style: normal;
 }
+.empty-hint.env-empty {
+  padding-left: 44px;
+}
+
+/* ---------- Environment rows ---------- */
+.env-head {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.env-head.active-env {
+  color: var(--text);
+}
+.env-icon {
+  color: var(--mauve);
+  font-size: 10px;
+}
+.active-env .env-icon {
+  color: var(--green);
+}
+.active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
 
 /* ---------- Tab bar ---------- */
 .tabbar {

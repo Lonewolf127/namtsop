@@ -1,13 +1,15 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
-import type {
-  BodyType,
-  KeyValue,
-  Method,
-  Project,
-  RequestData,
-  RequestTab,
-  TreeNode,
+import {
+  DEFAULT_ENV_NAMES,
+  type BodyType,
+  type Environment,
+  type KeyValue,
+  type Method,
+  type Project,
+  type RequestData,
+  type RequestTab,
+  type TreeNode,
 } from "./types";
 import {
   deleteProject as apiDeleteProject,
@@ -63,6 +65,52 @@ function extractRequest(tab: RequestTab): RequestData {
   };
 }
 
+function makeEnv(name: string, nodes: TreeNode[] = []): Environment {
+  return { id: nanoid(), name, nodes };
+}
+
+/** A fresh project with the default dev/stg/prod environments. */
+function makeProject(name: string): Project {
+  const environments = DEFAULT_ENV_NAMES.map((n) => makeEnv(n));
+  return {
+    id: nanoid(),
+    name,
+    environments,
+    activeEnvId: environments[0].id,
+    version: 2,
+  };
+}
+
+/**
+ * Bring a project loaded from disk up to the current schema. v1 projects stored
+ * `nodes` directly on the project; move those into a `dev` environment and add
+ * empty stg/prod. Returns [project, migrated?].
+ */
+function normalizeProject(raw: any): [Project, boolean] {
+  if (Array.isArray(raw?.environments) && raw.environments.length > 0) {
+    const activeEnvId = raw.environments.some(
+      (e: Environment) => e.id === raw.activeEnvId,
+    )
+      ? raw.activeEnvId
+      : raw.environments[0].id;
+    return [{ ...raw, activeEnvId, version: 2 } as Project, false];
+  }
+  // v1 → v2 migration.
+  const legacyNodes: TreeNode[] = Array.isArray(raw?.nodes) ? raw.nodes : [];
+  const environments = [
+    makeEnv(DEFAULT_ENV_NAMES[0], legacyNodes),
+    ...DEFAULT_ENV_NAMES.slice(1).map((n) => makeEnv(n)),
+  ];
+  const project: Project = {
+    id: raw?.id ?? nanoid(),
+    name: raw?.name ?? "Untitled Project",
+    environments,
+    activeEnvId: environments[0].id,
+    version: 2,
+  };
+  return [project, true];
+}
+
 // ---- immutable tree helpers ----
 
 function mapNode(
@@ -113,6 +161,23 @@ function findNode(nodes: TreeNode[], id: string): TreeNode | undefined {
   return undefined;
 }
 
+/** Deep-clone a node tree with fresh ids (used to duplicate environments). */
+function cloneNodes(nodes: TreeNode[]): TreeNode[] {
+  return nodes.map((n) => ({
+    id: nanoid(),
+    name: n.name,
+    type: n.type,
+    request: n.request
+      ? {
+          ...n.request,
+          params: n.request.params.map((p) => ({ ...p, id: nanoid() })),
+          headers: n.request.headers.map((h) => ({ ...h, id: nanoid() })),
+        }
+      : undefined,
+    children: n.children ? cloneNodes(n.children) : undefined,
+  }));
+}
+
 // ---- debounced persistence ----
 
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -151,18 +216,35 @@ interface AppState {
   createProject: (name?: string) => void;
   renameProject: (id: string, name: string) => void;
   deleteProject: (id: string) => void;
-  addFolder: (projectId: string, parentId: string | null) => void;
-  addRequest: (projectId: string, parentId: string | null) => void;
-  renameNode: (projectId: string, nodeId: string, name: string) => void;
-  deleteNode: (projectId: string, nodeId: string) => void;
-  openRequest: (projectId: string, nodeId: string) => void;
+
+  // environments
+  addEnvironment: (projectId: string, name?: string) => void;
+  renameEnvironment: (projectId: string, envId: string, name: string) => void;
+  deleteEnvironment: (projectId: string, envId: string) => void;
+  duplicateEnvironment: (projectId: string, envId: string) => void;
+  setActiveEnv: (projectId: string, envId: string) => void;
+
+  // nodes (scoped to an environment)
+  addFolder: (projectId: string, envId: string, parentId: string | null) => void;
+  addRequest: (
+    projectId: string,
+    envId: string,
+    parentId: string | null,
+  ) => void;
+  renameNode: (
+    projectId: string,
+    envId: string,
+    nodeId: string,
+    name: string,
+  ) => void;
+  deleteNode: (projectId: string, envId: string, nodeId: string) => void;
+  openRequest: (projectId: string, envId: string, nodeId: string) => void;
   saveScratchTab: (tabId: string) => void;
 }
 
 const first = newTab();
 
 export const useStore = create<AppState>((set, get) => {
-  /** Persist a project by id (debounced). */
   function persist(projectId: string) {
     schedulePersist(
       () => get().projects.find((p) => p.id === projectId),
@@ -170,14 +252,22 @@ export const useStore = create<AppState>((set, get) => {
     );
   }
 
-  /** Apply a mutation to a project's node array, then persist. */
-  function mutateProject(
+  /** Apply a mutation to one environment's node tree, then persist. */
+  function mutateEnv(
     projectId: string,
+    envId: string,
     fn: (nodes: TreeNode[]) => TreeNode[],
   ) {
     set((s) => ({
       projects: s.projects.map((p) =>
-        p.id === projectId ? { ...p, nodes: fn(p.nodes) } : p,
+        p.id === projectId
+          ? {
+              ...p,
+              environments: p.environments.map((e) =>
+                e.id === envId ? { ...e, nodes: fn(e.nodes) } : e,
+              ),
+            }
+          : p,
       ),
     }));
     persist(projectId);
@@ -192,10 +282,16 @@ export const useStore = create<AppState>((set, get) => {
 
     init: async () => {
       try {
-        const projects = await listProjects();
-        // Expand all projects by default so the tree is visible on first load.
+        const raw = await listProjects();
         const expanded: Record<string, boolean> = {};
-        for (const p of projects) expanded[p.id] = true;
+        const projects: Project[] = [];
+        for (const r of raw) {
+          const [project, migrated] = normalizeProject(r);
+          projects.push(project);
+          expanded[project.id] = true;
+          expanded[project.activeEnvId] = true;
+          if (migrated) saveProject(project).catch((e) => console.error(e));
+        }
         set({ projects, expanded, ready: true });
       } catch (e) {
         console.error("failed to load projects", e);
@@ -225,14 +321,12 @@ export const useStore = create<AppState>((set, get) => {
       set((s) => ({
         tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)),
       }));
-      // Write request-field edits through to the linked tree node.
       const tab = get().tabs.find((t) => t.id === id);
-      if (!tab?.projectId || !tab.nodeId) return;
-      const touchesRequest = REQUEST_KEYS.some((k) => k in patch);
-      if (!touchesRequest) return;
+      if (!tab?.projectId || !tab.envId || !tab.nodeId) return;
+      if (!REQUEST_KEYS.some((k) => k in patch)) return;
       const nodeId = tab.nodeId;
       const request = extractRequest(tab);
-      mutateProject(tab.projectId, (nodes) =>
+      mutateEnv(tab.projectId, tab.envId, (nodes) =>
         mapNode(nodes, nodeId, (n) => ({ ...n, request })),
       );
     },
@@ -276,10 +370,14 @@ export const useStore = create<AppState>((set, get) => {
       set((s) => ({ expanded: { ...s.expanded, [id]: !s.expanded[id] } })),
 
     createProject: (name = "New Project") => {
-      const project: Project = { id: nanoid(), name, nodes: [], version: 1 };
+      const project = makeProject(name);
       set((s) => ({
         projects: [...s.projects, project],
-        expanded: { ...s.expanded, [project.id]: true },
+        expanded: {
+          ...s.expanded,
+          [project.id]: true,
+          [project.activeEnvId]: true,
+        },
       }));
       saveProject(project).catch((e) => console.error(e));
     },
@@ -294,76 +392,156 @@ export const useStore = create<AppState>((set, get) => {
     deleteProject: (id) => {
       set((s) => ({
         projects: s.projects.filter((p) => p.id !== id),
-        // Unlink any open tabs that belonged to this project.
         tabs: s.tabs.map((t) =>
           t.projectId === id
-            ? { ...t, projectId: undefined, nodeId: undefined }
+            ? { ...t, projectId: undefined, envId: undefined, nodeId: undefined }
             : t,
         ),
       }));
       apiDeleteProject(id).catch((e) => console.error(e));
     },
 
-    addFolder: (projectId, parentId) => {
+    // ---- environments ----
+    addEnvironment: (projectId, name = "new-env") => {
+      const env = makeEnv(name);
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id === projectId
+            ? { ...p, environments: [...p.environments, env] }
+            : p,
+        ),
+        expanded: { ...s.expanded, [env.id]: true },
+      }));
+      persist(projectId);
+    },
+
+    renameEnvironment: (projectId, envId, name) => {
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id === projectId
+            ? {
+                ...p,
+                environments: p.environments.map((e) =>
+                  e.id === envId ? { ...e, name } : e,
+                ),
+              }
+            : p,
+        ),
+      }));
+      persist(projectId);
+    },
+
+    deleteEnvironment: (projectId, envId) => {
+      set((s) => ({
+        projects: s.projects.map((p) => {
+          if (p.id !== projectId) return p;
+          if (p.environments.length <= 1) return p; // keep at least one
+          const environments = p.environments.filter((e) => e.id !== envId);
+          const activeEnvId =
+            p.activeEnvId === envId ? environments[0].id : p.activeEnvId;
+          return { ...p, environments, activeEnvId };
+        }),
+        tabs: s.tabs.map((t) =>
+          t.envId === envId
+            ? { ...t, projectId: undefined, envId: undefined, nodeId: undefined }
+            : t,
+        ),
+      }));
+      persist(projectId);
+    },
+
+    duplicateEnvironment: (projectId, envId) => {
+      let newEnvId: string | undefined;
+      set((s) => ({
+        projects: s.projects.map((p) => {
+          if (p.id !== projectId) return p;
+          const src = p.environments.find((e) => e.id === envId);
+          if (!src) return p;
+          const copy = makeEnv(`${src.name}-copy`, cloneNodes(src.nodes));
+          newEnvId = copy.id;
+          return { ...p, environments: [...p.environments, copy] };
+        }),
+      }));
+      if (newEnvId)
+        set((s) => ({ expanded: { ...s.expanded, [newEnvId!]: true } }));
+      persist(projectId);
+    },
+
+    setActiveEnv: (projectId, envId) => {
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id === projectId ? { ...p, activeEnvId: envId } : p,
+        ),
+        expanded: { ...s.expanded, [envId]: true },
+      }));
+      persist(projectId);
+    },
+
+    // ---- nodes ----
+    addFolder: (projectId, envId, parentId) => {
       const node: TreeNode = {
         id: nanoid(),
         name: "New Folder",
         type: "folder",
         children: [],
       };
-      mutateProject(projectId, (nodes) => insertChild(nodes, parentId, node));
-      if (parentId)
-        set((s) => ({ expanded: { ...s.expanded, [parentId]: true } }));
+      mutateEnv(projectId, envId, (nodes) =>
+        insertChild(nodes, parentId, node),
+      );
+      const openKey = parentId ?? envId;
+      set((s) => ({ expanded: { ...s.expanded, [openKey]: true } }));
     },
 
-    addRequest: (projectId, parentId) => {
+    addRequest: (projectId, envId, parentId) => {
       const node: TreeNode = {
         id: nanoid(),
         name: "New Request",
         type: "request",
         request: emptyRequest(),
       };
-      mutateProject(projectId, (nodes) => insertChild(nodes, parentId, node));
-      if (parentId)
-        set((s) => ({ expanded: { ...s.expanded, [parentId]: true } }));
-      get().openRequest(projectId, node.id);
+      mutateEnv(projectId, envId, (nodes) =>
+        insertChild(nodes, parentId, node),
+      );
+      const openKey = parentId ?? envId;
+      set((s) => ({ expanded: { ...s.expanded, [openKey]: true } }));
+      get().openRequest(projectId, envId, node.id);
     },
 
-    renameNode: (projectId, nodeId, name) => {
-      mutateProject(projectId, (nodes) =>
+    renameNode: (projectId, envId, nodeId, name) => {
+      mutateEnv(projectId, envId, (nodes) =>
         mapNode(nodes, nodeId, (n) => ({ ...n, name })),
       );
-      // Keep any open tab's title in sync.
       set((s) => ({
         tabs: s.tabs.map((t) => (t.nodeId === nodeId ? { ...t, name } : t)),
       }));
     },
 
-    deleteNode: (projectId, nodeId) => {
-      mutateProject(projectId, (nodes) => removeNode(nodes, nodeId));
+    deleteNode: (projectId, envId, nodeId) => {
+      mutateEnv(projectId, envId, (nodes) => removeNode(nodes, nodeId));
       set((s) => ({
         tabs: s.tabs.map((t) =>
           t.nodeId === nodeId
-            ? { ...t, projectId: undefined, nodeId: undefined }
+            ? { ...t, projectId: undefined, envId: undefined, nodeId: undefined }
             : t,
         ),
       }));
     },
 
-    openRequest: (projectId, nodeId) => {
-      // Focus an already-open tab for this node.
+    openRequest: (projectId, envId, nodeId) => {
       const existing = get().tabs.find((t) => t.nodeId === nodeId);
       if (existing) {
         set({ activeId: existing.id });
         return;
       }
       const project = get().projects.find((p) => p.id === projectId);
-      const node = project && findNode(project.nodes, nodeId);
+      const env = project?.environments.find((e) => e.id === envId);
+      const node = env && findNode(env.nodes, nodeId);
       if (!node || node.type !== "request" || !node.request) return;
       const tab: RequestTab = {
         id: nanoid(),
         name: node.name,
         projectId,
+        envId,
         nodeId,
         loading: false,
         ...node.request,
@@ -375,22 +553,21 @@ export const useStore = create<AppState>((set, get) => {
       const tab = get().tabs.find((t) => t.id === tabId);
       if (!tab || tab.nodeId) return;
 
-      // Ensure there's a project to save into.
-      let projects = get().projects;
-      let projectId = projects[0]?.id;
-      if (!projectId) {
-        const p: Project = {
-          id: nanoid(),
-          name: "My Requests",
-          nodes: [],
-          version: 1,
-        };
+      // Ensure there's a project + environment to save into.
+      let project = get().projects[0];
+      if (!project) {
+        project = makeProject("My Requests");
         set((s) => ({
-          projects: [...s.projects, p],
-          expanded: { ...s.expanded, [p.id]: true },
+          projects: [...s.projects, project],
+          expanded: {
+            ...s.expanded,
+            [project.id]: true,
+            [project.activeEnvId]: true,
+          },
         }));
-        projectId = p.id;
       }
+      const projectId = project.id;
+      const envId = project.activeEnvId;
 
       const nodeId = nanoid();
       const node: TreeNode = {
@@ -399,12 +576,11 @@ export const useStore = create<AppState>((set, get) => {
         type: "request",
         request: extractRequest(tab),
       };
-      mutateProject(projectId!, (nodes) => insertChild(nodes, null, node));
-      // Link the scratch tab to the new node.
+      mutateEnv(projectId, envId, (nodes) => insertChild(nodes, null, node));
       set((s) => ({
         tabs: s.tabs.map((t) =>
           t.id === tabId
-            ? { ...t, projectId, nodeId, name: node.name }
+            ? { ...t, projectId, envId, nodeId, name: node.name }
             : t,
         ),
       }));

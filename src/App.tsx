@@ -41,6 +41,12 @@ function UrlBar() {
   const update = useStore((s) => s.update);
   const send = useStore((s) => s.send);
   const saveScratchTab = useStore((s) => s.saveScratchTab);
+  // Resolve the environment label for the "Saved" pill.
+  const envName = useStore((s) => {
+    if (!tab.projectId || !tab.envId) return undefined;
+    const project = s.projects.find((p) => p.id === tab.projectId);
+    return project?.environments.find((e) => e.id === tab.envId)?.name;
+  });
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") send(tab.id);
@@ -75,8 +81,11 @@ function UrlBar() {
         {tab.loading ? "Sending…" : "Send"}
       </button>
       {tab.nodeId ? (
-        <span className="saved-pill" title="Saved to a project — edits auto-save">
-          Saved
+        <span
+          className="saved-pill"
+          title="Saved to a project — edits auto-save"
+        >
+          Saved{envName ? ` · ${envName}` : ""}
         </span>
       ) : (
         <button

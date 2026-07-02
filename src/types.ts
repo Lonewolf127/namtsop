@@ -64,14 +64,29 @@ export interface TreeNode {
   request?: RequestData;
 }
 
-/** A project = one microservice's collection of controllers and endpoints. */
-export interface Project {
+/**
+ * An environment (dev / stg / prod) inside a project. Each environment owns an
+ * isolated tree of controllers and requests, so the same endpoint can differ
+ * completely between environments.
+ */
+export interface Environment {
   id: string;
   name: string;
   nodes: TreeNode[];
-  /** Schema version, to ease future migrations (e.g. environments). */
+}
+
+/** A project = one microservice, containing one tree per environment. */
+export interface Project {
+  id: string;
+  name: string;
+  environments: Environment[];
+  /** The environment highlighted as "current" (cosmetic emphasis). */
+  activeEnvId: string;
+  /** Schema version, to ease future migrations. */
   version: number;
 }
+
+export const DEFAULT_ENV_NAMES = ["dev", "stg", "prod"];
 
 /** One open request in the workspace (may be linked to a saved tree node). */
 export interface RequestTab extends RequestData {
@@ -79,6 +94,7 @@ export interface RequestTab extends RequestData {
   name: string;
   /** When set, edits to this tab persist back to the project tree. */
   projectId?: string;
+  envId?: string;
   nodeId?: string;
   // Transient response state.
   loading: boolean;

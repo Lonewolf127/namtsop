@@ -43,23 +43,35 @@ produces them automatically.
 
 ### Organizing requests (project structure)
 
-The sidebar mirrors how a microservice is laid out:
+The sidebar mirrors how a microservice is laid out, with a separate isolated
+tree per **environment** (dev / stg / prod):
 
 ```
-UserService              ← project (a microservice)
-├── AuthController        ← folder (a controller / group)
-│   ├── POST  /login      ← request (an endpoint)
-│   └── POST  /refresh
-└── ProfileController
-    ├── GET   /me
-    └── PUT   /me
+UserService                ← project (a microservice)
+├── ⬢ dev  ●  (active)     ← environment (own isolated tree)
+│   └── AuthController      ← folder (a controller / group)
+│       ├── POST  /login    ← request (an endpoint)
+│       └── POST  /refresh
+├── ⬢ stg
+│   └── AuthController
+│       └── POST  /login    ← same endpoint, different base URL
+└── ⬢ prod
+    └── AuthController
+        └── POST  /login
 ```
 
-- Click **+** in the Projects header to create a project.
-- Hover a project/folder and use **⊕** (new request), **▸+** (new folder),
-  **✎** (rename), **×** (delete).
-- Click a request to open it in a tab. Edits **auto-save** back to the project.
-- Ad-hoc requests in a new tab can be filed into a project with **Save**.
+- Click **+** in the Projects header to create a project. It comes with **dev,
+  stg and prod** environments out of the box.
+- Hover a **project** → **⬢+** add environment, **✎** rename, **×** delete.
+- Hover an **environment** → **⊕** new request, **▸+** new folder, **◉** set
+  active, **⧉** duplicate (clones the whole tree — build `dev` once, copy it to
+  `stg`/`prod` and just change the URLs), **✎** rename, **×** delete.
+- Hover a **folder/request** → the same request/folder/rename/delete actions.
+- Click a request to open it in a tab. Edits **auto-save** back to that
+  environment. The URL bar shows a `Saved · dev` pill so you always know which
+  environment you're editing.
+- Ad-hoc requests in a new tab can be filed into a project's active environment
+  with **Save**.
 
 Projects are stored as JSON, one file per project, under the OS app-data dir:
 
@@ -67,14 +79,6 @@ Projects are stored as JSON, one file per project, under the OS app-data dir:
 Windows:  %APPDATA%\com.bojesh127.namtsop\projects\
 macOS:    ~/Library/Application Support/com.bojesh127.namtsop/projects/
 ```
-
-### Coming next: environments
-
-The project tree is designed to host **environments** (dev / stg / prod). Each
-environment will carry its own variables (e.g. `{{base_url}}`, tokens) and the
-same controllers/endpoints, so you can switch a whole project between
-environments without duplicating requests. (Not yet implemented — see the
-roadmap.)
 
 ---
 
@@ -146,7 +150,8 @@ Local Windows builds require the WebView2 runtime and the MSVC C++ build tools.
 
 ## Roadmap
 
-- [ ] Environments (dev/stg/prod) with variable substitution `{{base_url}}`
+- [x] Environments (dev/stg/prod) — isolated request tree per environment
+- [ ] Environment variables with `{{base_url}}` substitution (shared across envs)
 - [ ] Request history
 - [ ] Auth helpers (Bearer, Basic, API key)
 - [ ] Import/export Postman collections
