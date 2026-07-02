@@ -93,7 +93,28 @@ export interface Project {
   version: number;
 }
 
-export const DEFAULT_ENV_NAMES = ["dev", "stg", "prod"];
+export const DEFAULT_ENV_NAMES = ["local", "dev", "stg", "prod"];
+
+/** One recorded send: the request payload plus its response (or error). */
+export interface HistoryEntry {
+  id: string;
+  at: number; // epoch ms
+  request: RequestData;
+  /** URL after {{variable}} resolution, for quick reference. */
+  resolvedUrl: string;
+  response?: HttpResponse;
+  error?: string;
+}
+
+/** Persisted app settings. */
+export interface Settings {
+  /**
+   * Record & show per-request history. History is stored per-request and loaded
+   * lazily (never at launch), but this switch lets you turn recording off
+   * entirely if you'd rather keep things minimal.
+   */
+  historyEnabled: boolean;
+}
 
 /** One open request in the workspace (may be linked to a saved tree node). */
 export interface RequestTab extends RequestData {

@@ -14,6 +14,11 @@ pub fn run() {
             storage::list_projects,
             storage::save_project,
             storage::delete_project,
+            storage::load_settings,
+            storage::save_settings,
+            storage::load_history,
+            storage::append_history,
+            storage::clear_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

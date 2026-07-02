@@ -40,6 +40,8 @@ produces them automatically.
 - Request body: JSON / Text / XML / Form (auto `Content-Type`)
 - Response viewer: status, time, size, pretty-printed JSON, raw headers
 - Syntax highlighting for JSON / XML / HTML
+- Per-request **history** — payload + response for each send, with restore
+- Default environments: **local**, dev, stg, prod
 
 ### Organizing requests (project structure)
 
@@ -96,6 +98,21 @@ Request URL:  {{base_url}}/users/42
 ```
 
 Undefined variables are left as-is (e.g. `{{missing}}`) so mistakes are visible.
+
+### Request history
+
+Every saved request keeps a **History** tab showing past sends — the payload
+that went out and the response that came back:
+
+- Open a saved request → **History** sub-tab. Pick an entry to see its
+  **Response** (status, time, size, body) or **Payload** (method, URL, headers,
+  body).
+- **↩ Restore** loads a past payload back into the request.
+- History is stored **per request** in a separate file and loaded **lazily**
+  (never at app launch), so it has no effect on startup time. Only the last 50
+  sends per request are kept.
+- Toggle **Record request history** in the sidebar footer to turn recording off
+  entirely if you'd rather keep things minimal.
 
 Projects are stored as JSON, one file per project, under the OS app-data dir:
 
@@ -177,7 +194,8 @@ Local Windows builds require the WebView2 runtime and the MSVC C++ build tools.
 - [x] Environments (dev/stg/prod) — isolated request tree per environment
 - [x] Per-environment variables with `{{base_url}}` substitution
 - [x] Project-level (global) variables inherited by all environments (env overrides)
-- [ ] Request history
+- [x] Per-request history (payload + response, restore, on/off toggle)
+- [ ] Custom environments & configurable per-env URL parts
 - [ ] Auth helpers (Bearer, Basic, API key)
 - [ ] Import/export Postman collections
 - [ ] Drag-and-drop reordering in the tree

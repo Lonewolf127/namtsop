@@ -15,15 +15,39 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
-/// Resolve (and create) the `projects/` directory under the app data dir.
-fn projects_dir(app: &AppHandle) -> Result<PathBuf, String> {
+/// Keep at most this many history entries per request.
+const HISTORY_CAP: usize = 50;
+
+/// Resolve (and create) the app data dir.
+fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| format!("could not resolve app data dir: {e}"))?
-        .join("projects");
-    fs::create_dir_all(&dir).map_err(|e| format!("could not create projects dir: {e}"))?;
+        .map_err(|e| format!("could not resolve app data dir: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("could not create data dir: {e}"))?;
     Ok(dir)
+}
+
+/// Resolve (and create) a named subdirectory under the app data dir.
+fn subdir(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
+    let dir = data_dir(app)?.join(name);
+    fs::create_dir_all(&dir).map_err(|e| format!("could not create {name} dir: {e}"))?;
+    Ok(dir)
+}
+
+fn projects_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    subdir(app, "projects")
+}
+
+/// Write JSON to a temp file then rename, so a crash mid-write can't corrupt
+/// an existing file.
+fn atomic_write(dir: &PathBuf, name: &str, value: &Value) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!(".{name}.tmp"));
+    let path = dir.join(name);
+    fs::write(&tmp, text).map_err(|e| format!("write failed: {e}"))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("commit failed: {e}"))?;
+    Ok(())
 }
 
 /// Reject ids that could escape the projects directory.
@@ -83,6 +107,69 @@ pub fn save_project(app: AppHandle, project: Value) -> Result<(), String> {
 pub fn delete_project(app: AppHandle, id: String) -> Result<(), String> {
     let id = safe_id(&id)?;
     let path = projects_dir(&app)?.join(format!("{id}.json"));
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| format!("delete failed: {e}"))?;
+    }
+    Ok(())
+}
+
+// ---- app settings ----
+
+#[tauri::command]
+pub fn load_settings(app: AppHandle) -> Result<Value, String> {
+    let path = data_dir(&app)?.join("settings.json");
+    match fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).map_err(|e| e.to_string()),
+        Err(_) => Ok(Value::Object(Default::default())), // no file yet → defaults
+    }
+}
+
+#[tauri::command]
+pub fn save_settings(app: AppHandle, settings: Value) -> Result<(), String> {
+    atomic_write(&data_dir(&app)?, "settings.json", &settings)
+}
+
+// ---- per-request history ----
+
+/// History lives in its own file per request id so it never loads with the
+/// project and can be disabled/lazy-loaded independently.
+#[tauri::command]
+pub fn load_history(app: AppHandle, node_id: String) -> Result<Vec<Value>, String> {
+    let id = safe_id(&node_id)?;
+    let path = subdir(&app, "history")?.join(format!("{id}.json"));
+    match fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).map_err(|e| e.to_string()),
+        Err(_) => Ok(Vec::new()),
+    }
+}
+
+/// Append one entry, keeping only the most recent HISTORY_CAP entries.
+#[tauri::command]
+pub fn append_history(
+    app: AppHandle,
+    node_id: String,
+    entry: Value,
+) -> Result<(), String> {
+    let id = safe_id(&node_id)?;
+    let dir = subdir(&app, "history")?;
+    let path = dir.join(format!("{id}.json"));
+
+    let mut entries: Vec<Value> = match fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    entries.push(entry);
+    let len = entries.len();
+    if len > HISTORY_CAP {
+        entries.drain(0..len - HISTORY_CAP);
+    }
+    atomic_write(&dir, &format!("{id}.json"), &Value::Array(entries))
+}
+
+#[tauri::command]
+pub fn clear_history(app: AppHandle, node_id: String) -> Result<(), String> {
+    let id = safe_id(&node_id)?;
+    let path = subdir(&app, "history")?.join(format!("{id}.json"));
     if path.exists() {
         fs::remove_file(&path).map_err(|e| format!("delete failed: {e}"))?;
     }

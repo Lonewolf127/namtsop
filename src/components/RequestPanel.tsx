@@ -3,8 +3,9 @@ import type { BodyType, RequestTab } from "../types";
 import { useStore } from "../store";
 import KeyValueEditor from "./KeyValueEditor";
 import CodeEditor from "./CodeEditor";
+import HistoryPanel from "./HistoryPanel";
 
-type SubTab = "params" | "headers" | "body";
+type SubTab = "params" | "headers" | "body" | "history";
 
 const BODY_TYPES: { id: BodyType; label: string }[] = [
   { id: "none", label: "None" },
@@ -16,6 +17,10 @@ const BODY_TYPES: { id: BodyType; label: string }[] = [
 
 export default function RequestPanel({ tab }: { tab: RequestTab }) {
   const update = useStore((s) => s.update);
+  const historyEnabled = useStore((s) => s.settings.historyEnabled);
+  const historyCount = useStore((s) =>
+    tab.nodeId ? s.history[tab.nodeId]?.length : undefined,
+  );
   const [sub, setSub] = useState<SubTab>("params");
 
   const paramCount = tab.params.filter((p) => p.key.trim()).length;
@@ -43,6 +48,15 @@ export default function RequestPanel({ tab }: { tab: RequestTab }) {
         >
           Body
           {tab.bodyType !== "none" && <span className="dot" />}
+        </button>
+        <button
+          className={sub === "history" ? "active" : ""}
+          onClick={() => setSub("history")}
+        >
+          History
+          {historyEnabled && historyCount ? (
+            <span className="badge">{historyCount}</span>
+          ) : null}
         </button>
       </div>
 
@@ -98,6 +112,8 @@ export default function RequestPanel({ tab }: { tab: RequestTab }) {
             )}
           </div>
         )}
+
+        {sub === "history" && <HistoryPanel tab={tab} />}
       </div>
     </div>
   );

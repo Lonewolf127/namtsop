@@ -4,16 +4,23 @@ import {
   DEFAULT_ENV_NAMES,
   type BodyType,
   type Environment,
+  type HistoryEntry,
   type KeyValue,
   type Method,
   type Project,
   type RequestData,
   type RequestTab,
+  type Settings,
   type TreeNode,
 } from "./types";
 import {
+  appendHistory,
+  clearHistory as apiClearHistory,
   deleteProject as apiDeleteProject,
   listProjects,
+  loadHistory,
+  loadSettings,
+  saveSettings,
   saveProject,
   sendRequest,
 } from "./lib/api";
@@ -235,8 +242,16 @@ interface AppState {
   activeId: string;
   projects: Project[];
   expanded: Record<string, boolean>;
+  settings: Settings;
+  /** Lazily-loaded history cache, keyed by request node id. */
+  history: Record<string, HistoryEntry[]>;
 
   init: () => Promise<void>;
+
+  // settings & history
+  setHistoryEnabled: (enabled: boolean) => void;
+  loadHistoryFor: (nodeId: string) => Promise<void>;
+  clearHistoryFor: (nodeId: string) => void;
 
   // tabs
   addTab: () => void;
@@ -324,8 +339,18 @@ export const useStore = create<AppState>((set, get) => {
     activeId: first.id,
     projects: [],
     expanded: {},
+    settings: { historyEnabled: true },
+    history: {},
 
     init: async () => {
+      // Settings are tiny; history is NOT loaded here (lazy per request).
+      try {
+        const s = await loadSettings();
+        if (typeof s.historyEnabled === "boolean")
+          set({ settings: { historyEnabled: s.historyEnabled } });
+      } catch (e) {
+        console.error("failed to load settings", e);
+      }
       try {
         const raw = await listProjects();
         const expanded: Record<string, boolean> = {};
@@ -342,6 +367,29 @@ export const useStore = create<AppState>((set, get) => {
         console.error("failed to load projects", e);
         set({ ready: true });
       }
+    },
+
+    // ---- settings & history ----
+    setHistoryEnabled: (enabled) => {
+      const settings = { historyEnabled: enabled };
+      set({ settings });
+      saveSettings(settings).catch((e) => console.error(e));
+    },
+
+    loadHistoryFor: async (nodeId) => {
+      if (get().history[nodeId]) return; // already cached
+      try {
+        const entries = await loadHistory(nodeId);
+        set((s) => ({ history: { ...s.history, [nodeId]: entries } }));
+      } catch (e) {
+        console.error("failed to load history", e);
+        set((s) => ({ history: { ...s.history, [nodeId]: [] } }));
+      }
+    },
+
+    clearHistoryFor: (nodeId) => {
+      set((s) => ({ history: { ...s.history, [nodeId]: [] } }));
+      apiClearHistory(nodeId).catch((e) => console.error(e));
     },
 
     // ---- tabs ----
@@ -404,10 +452,34 @@ export const useStore = create<AppState>((set, get) => {
         headers.push({ key: "Content-Type", value: ct, enabled: true });
       }
 
+      const resolvedUrl = sub(tab.url.trim());
+      const snapshot = extractRequest(tab);
+
+      // Record a history entry (in-memory + on disk) if enabled and this is a
+      // saved request. Errors are recorded too.
+      const record = (patch: Partial<HistoryEntry>) => {
+        if (!get().settings.historyEnabled || !tab.nodeId) return;
+        const nodeId = tab.nodeId;
+        const entry: HistoryEntry = {
+          id: nanoid(),
+          at: Date.now(),
+          request: snapshot,
+          resolvedUrl,
+          ...patch,
+        };
+        set((s) => ({
+          history: {
+            ...s.history,
+            [nodeId]: [...(s.history[nodeId] ?? []), entry].slice(-50),
+          },
+        }));
+        appendHistory(nodeId, entry).catch((e) => console.error(e));
+      };
+
       try {
         const response = await sendRequest({
           method: tab.method,
-          url: sub(tab.url.trim()),
+          url: resolvedUrl,
           headers,
           query: tab.params
             .filter((p) => p.key.trim())
@@ -420,11 +492,11 @@ export const useStore = create<AppState>((set, get) => {
           followRedirects: true,
         });
         get().update(id, { loading: false, response, error: undefined });
+        record({ response });
       } catch (e) {
-        get().update(id, {
-          loading: false,
-          error: typeof e === "string" ? e : String(e),
-        });
+        const error = typeof e === "string" ? e : String(e);
+        get().update(id, { loading: false, error });
+        record({ error });
       }
     },
 
@@ -611,14 +683,36 @@ export const useStore = create<AppState>((set, get) => {
     },
 
     deleteNode: (projectId, envId, nodeId) => {
+      // Collect request ids in the removed subtree so we can drop their history.
+      const project = get().projects.find((p) => p.id === projectId);
+      const env = project?.environments.find((e) => e.id === envId);
+      const target = env && findNode(env.nodes, nodeId);
+      const requestIds: string[] = [];
+      const collect = (n: TreeNode) => {
+        if (n.type === "request") requestIds.push(n.id);
+        n.children?.forEach(collect);
+      };
+      if (target) collect(target);
+
       mutateEnv(projectId, envId, (nodes) => removeNode(nodes, nodeId));
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.nodeId === nodeId
-            ? { ...t, projectId: undefined, envId: undefined, nodeId: undefined }
-            : t,
-        ),
-      }));
+      set((s) => {
+        const history = { ...s.history };
+        for (const rid of requestIds) delete history[rid];
+        return {
+          history,
+          tabs: s.tabs.map((t) =>
+            t.nodeId === nodeId
+              ? {
+                  ...t,
+                  projectId: undefined,
+                  envId: undefined,
+                  nodeId: undefined,
+                }
+              : t,
+          ),
+        };
+      });
+      for (const rid of requestIds) apiClearHistory(rid).catch(() => {});
     },
 
     openRequest: (projectId, envId, nodeId) => {

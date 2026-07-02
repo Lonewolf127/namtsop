@@ -347,6 +347,8 @@ function ProjectRow({
 
 export default function Sidebar() {
   const { projects, createProject } = useStore();
+  const historyEnabled = useStore((s) => s.settings.historyEnabled);
+  const setHistoryEnabled = useStore((s) => s.setHistoryEnabled);
   const [renamingId, setRenamingId] = useState<string | null>(null);
 
   return (
@@ -377,6 +379,19 @@ export default function Sidebar() {
             />
           ))
         )}
+      </div>
+      <div className="sidebar-foot">
+        <label
+          className="hist-toggle"
+          title="Record each request's responses. Loaded lazily — off keeps things minimal."
+        >
+          <input
+            type="checkbox"
+            checked={historyEnabled}
+            onChange={(e) => setHistoryEnabled(e.target.checked)}
+          />
+          Record request history
+        </label>
       </div>
     </aside>
   );
