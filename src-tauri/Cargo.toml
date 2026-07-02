@@ -1,0 +1,51 @@
+[package]
+name = "namtsop"
+version = "0.1.0"
+description = "A fast, lightweight HTTP client"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "namtsop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# HTTP engine: rustls avoids a system OpenSSL dependency (cleaner cross-builds
+# to Windows) and keeps the binary self-contained. gzip/brotli/deflate for
+# transparent decompression.
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "gzip",
+    "brotli",
+    "deflate",
+    "json",
+    "stream",
+    "multipart",
+    "cookies",
+    "http2",
+    "charset",
+] }
+tokio = { version = "1", features = ["time"] }
+base64 = "0.22"
+
+# Optimize the release binary for size + fast launch (small binary = less to
+# map into memory at startup). `opt-level = "s"` keeps things reasonably fast
+# while trimming size; LTO + one codegen unit + strip shrink it further.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

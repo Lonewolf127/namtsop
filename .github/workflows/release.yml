@@ -1,0 +1,67 @@
+name: Release (Windows)
+
+# Builds the Windows installers (.msi + NSIS .exe) and publishes them to a
+# GitHub Release so anyone can download and install on any Windows machine.
+#
+# Trigger: push a version tag, e.g.
+#   git tag v0.1.0 && git push origin v0.1.0
+# Or run this workflow manually from the Actions tab (builds installers as a
+# run artifact without creating a release).
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write # needed to create the Release and upload installers
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # On a tag push this builds the installers AND publishes a GitHub Release
+      # with them attached. On manual dispatch (no tag) it just builds.
+      - name: Build & release Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: "namtsop ${{ github.ref_name }}"
+          releaseBody: "Download the Windows installer (.msi or setup .exe) below."
+          releaseDraft: false
+          prerelease: false
+
+      # Always expose the installers as a downloadable run artifact too.
+      - name: Upload installers artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: warn
