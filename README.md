@@ -73,6 +73,30 @@ UserService                ← project (a microservice)
 - Ad-hoc requests in a new tab can be filed into a project's active environment
   with **Save**.
 
+#### Variables (`{{base_url}}`)
+
+Each environment carries its own variables, so the same request resolves
+differently per environment:
+
+- Hover an environment → **`{}`** to open its variables editor. New
+  environments come with a `base_url` variable ready to fill in.
+- Reference a variable anywhere in a request — URL, header keys/values, query
+  params, or body — as `{{base_url}}`. It's resolved at send time against the
+  request's own environment.
+- When a URL contains a variable, the URL bar shows a live **`→` preview** of
+  the resolved address.
+
+```
+dev  → base_url = http://localhost:8080
+prod → base_url = https://api.company.com
+
+Request URL:  {{base_url}}/users/42
+  in dev  →   http://localhost:8080/users/42
+  in prod →   https://api.company.com/users/42
+```
+
+Undefined variables are left as-is (e.g. `{{missing}}`) so mistakes are visible.
+
 Projects are stored as JSON, one file per project, under the OS app-data dir:
 
 ```
@@ -151,7 +175,8 @@ Local Windows builds require the WebView2 runtime and the MSVC C++ build tools.
 ## Roadmap
 
 - [x] Environments (dev/stg/prod) — isolated request tree per environment
-- [ ] Environment variables with `{{base_url}}` substitution (shared across envs)
+- [x] Per-environment variables with `{{base_url}}` substitution
+- [ ] Project-level (global) variables that all environments inherit
 - [ ] Request history
 - [ ] Auth helpers (Bearer, Basic, API key)
 - [ ] Import/export Postman collections

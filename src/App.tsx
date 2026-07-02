@@ -3,6 +3,8 @@ import { useStore, useActiveTab, METHOD_OPTIONS } from "./store";
 import Sidebar from "./components/Sidebar";
 import RequestPanel from "./components/RequestPanel";
 import ResponsePanel from "./components/ResponsePanel";
+import EnvVarsModal from "./components/EnvVarsModal";
+import { buildVarMap, substitute } from "./lib/vars";
 import "./styles.css";
 
 function TabBar() {
@@ -41,18 +43,27 @@ function UrlBar() {
   const update = useStore((s) => s.update);
   const send = useStore((s) => s.send);
   const saveScratchTab = useStore((s) => s.saveScratchTab);
-  // Resolve the environment label for the "Saved" pill.
-  const envName = useStore((s) => {
+  // Resolve the environment (name + variables) for the linked tab.
+  const env = useStore((s) => {
     if (!tab.projectId || !tab.envId) return undefined;
     const project = s.projects.find((p) => p.id === tab.projectId);
-    return project?.environments.find((e) => e.id === tab.envId)?.name;
+    return project?.environments.find((e) => e.id === tab.envId);
   });
+  const envName = env?.name;
+
+  // Live preview of the URL with {{variables}} resolved.
+  const resolvedUrl =
+    env && tab.url.includes("{{")
+      ? substitute(tab.url, buildVarMap(env.variables))
+      : null;
+  const showPreview = resolvedUrl !== null && resolvedUrl !== tab.url;
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") send(tab.id);
   }
 
   return (
+    <div className="urlbar-wrap">
     <div className="urlbar">
       <select
         className={`method-select m-${tab.method}`}
@@ -97,6 +108,12 @@ function UrlBar() {
         </button>
       )}
     </div>
+      {showPreview && (
+        <div className="url-preview" title="URL with variables resolved">
+          <span className="url-preview-arrow">→</span> {resolvedUrl}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -120,6 +137,7 @@ export default function App() {
           <ResponsePanel tab={tab} />
         </div>
       </div>
+      <EnvVarsModal />
     </div>
   );
 }

@@ -217,6 +217,112 @@ button {
   flex-shrink: 0;
 }
 
+.var-badge {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--mauve);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+/* ---------- Modal ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  width: 560px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-right: 8px;
+}
+.modal-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.env-tag {
+  color: var(--green);
+  font-weight: 600;
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.modal-close:hover {
+  color: var(--text);
+}
+
+.modal-hint {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.modal-hint code {
+  background: var(--bg-3);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--mauve);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+.modal-body {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 4px;
+  min-height: 120px;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.modal-done {
+  background: var(--accent);
+  color: var(--bg-3);
+  border: none;
+  border-radius: 6px;
+  padding: 7px 20px;
+  font-weight: 700;
+}
+.modal-done:hover {
+  background: var(--accent-2);
+}
+
 /* ---------- Tab bar ---------- */
 .tabbar {
   display: flex;
@@ -276,12 +382,30 @@ button {
 }
 
 /* ---------- URL bar ---------- */
+.urlbar-wrap {
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+
 .urlbar {
   display: flex;
   gap: 8px;
   padding: 10px 12px;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border);
+}
+
+.url-preview {
+  padding: 0 12px 8px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--green);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.url-preview-arrow {
+  color: var(--muted);
 }
 
 .method-select {

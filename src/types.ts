@@ -73,6 +73,8 @@ export interface Environment {
   id: string;
   name: string;
   nodes: TreeNode[];
+  /** Per-environment variables, referenced in requests as `{{key}}`. */
+  variables: KeyValue[];
 }
 
 /** A project = one microservice, containing one tree per environment. */

@@ -157,9 +157,11 @@ function EnvironmentRow({
     deleteEnvironment,
     duplicateEnvironment,
     setActiveEnv,
+    openVarsEditor,
   } = useStore();
   const open = expanded[env.id];
   const isActive = project.activeEnvId === env.id;
+  const varCount = env.variables.filter((v) => v.key.trim() && v.enabled).length;
 
   return (
     <div className="env">
@@ -180,7 +182,14 @@ function EnvironmentRow({
           onCancel={() => setRenamingId(null)}
         />
         {isActive && <span className="active-dot" title="Active environment" />}
+        {varCount > 0 && <span className="var-badge">{`{}`}{varCount}</span>}
         <span className="node-actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            title="Edit variables"
+            onClick={() => openVarsEditor(project.id, env.id)}
+          >
+            {"{}"}
+          </button>
           <button
             title="New request"
             onClick={() => addRequest(project.id, env.id, null)}

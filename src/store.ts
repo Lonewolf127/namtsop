@@ -17,6 +17,7 @@ import {
   saveProject,
   sendRequest,
 } from "./lib/api";
+import { buildVarMap, substitute } from "./lib/vars";
 
 const CONTENT_TYPES: Record<BodyType, string | null> = {
   none: null,
@@ -66,7 +67,26 @@ function extractRequest(tab: RequestTab): RequestData {
 }
 
 function makeEnv(name: string, nodes: TreeNode[] = []): Environment {
-  return { id: nanoid(), name, nodes };
+  // Seed a `base_url` variable so new environments are immediately useful, plus
+  // a trailing blank row for the key/value editor.
+  return {
+    id: nanoid(),
+    name,
+    nodes,
+    variables: [
+      { id: nanoid(), key: "base_url", value: "", enabled: true },
+      emptyRow(),
+    ],
+  };
+}
+
+/** Ensure an env has a usable (non-empty) variables array after loading. */
+function normalizeEnv(env: Environment): Environment {
+  const variables =
+    Array.isArray(env.variables) && env.variables.length > 0
+      ? env.variables
+      : [emptyRow()];
+  return { ...env, variables };
 }
 
 /** A fresh project with the default dev/stg/prod environments. */
@@ -88,12 +108,20 @@ function makeProject(name: string): Project {
  */
 function normalizeProject(raw: any): [Project, boolean] {
   if (Array.isArray(raw?.environments) && raw.environments.length > 0) {
-    const activeEnvId = raw.environments.some(
+    const environments = raw.environments.map(normalizeEnv);
+    const activeEnvId = environments.some(
       (e: Environment) => e.id === raw.activeEnvId,
     )
       ? raw.activeEnvId
-      : raw.environments[0].id;
-    return [{ ...raw, activeEnvId, version: 2 } as Project, false];
+      : environments[0].id;
+    // Flag a migration if any env was missing its variables array.
+    const migrated = raw.environments.some(
+      (e: any) => !Array.isArray(e?.variables) || e.variables.length === 0,
+    );
+    return [
+      { ...raw, environments, activeEnvId, version: 2 } as Project,
+      migrated,
+    ];
   }
   // v1 → v2 migration.
   const legacyNodes: TreeNode[] = Array.isArray(raw?.nodes) ? raw.nodes : [];
@@ -224,6 +252,16 @@ interface AppState {
   duplicateEnvironment: (projectId: string, envId: string) => void;
   setActiveEnv: (projectId: string, envId: string) => void;
 
+  // environment variables
+  varsEditor: { projectId: string; envId: string } | null;
+  openVarsEditor: (projectId: string, envId: string) => void;
+  closeVarsEditor: () => void;
+  setEnvVariables: (
+    projectId: string,
+    envId: string,
+    variables: KeyValue[],
+  ) => void;
+
   // nodes (scoped to an environment)
   addFolder: (projectId: string, envId: string, parentId: string | null) => void;
   addRequest: (
@@ -336,9 +374,19 @@ export const useStore = create<AppState>((set, get) => {
       if (!tab || !tab.url.trim()) return;
       get().update(id, { loading: true, error: undefined });
 
+      // Resolve {{variables}} against the request's own environment (if linked).
+      const project = get().projects.find((p) => p.id === tab.projectId);
+      const env = project?.environments.find((e) => e.id === tab.envId);
+      const vars = buildVarMap(env?.variables ?? []);
+      const sub = (t: string) => substitute(t, vars);
+
       const headers = tab.headers
         .filter((h) => h.key.trim())
-        .map(({ key, value, enabled }) => ({ key, value, enabled }));
+        .map(({ key, value, enabled }) => ({
+          key: sub(key),
+          value: sub(value),
+          enabled,
+        }));
       const ct = CONTENT_TYPES[tab.bodyType];
       const hasCt = headers.some((h) => h.key.toLowerCase() === "content-type");
       if (ct && !hasCt && tab.bodyType !== "none") {
@@ -348,12 +396,16 @@ export const useStore = create<AppState>((set, get) => {
       try {
         const response = await sendRequest({
           method: tab.method,
-          url: tab.url.trim(),
+          url: sub(tab.url.trim()),
           headers,
           query: tab.params
             .filter((p) => p.key.trim())
-            .map(({ key, value, enabled }) => ({ key, value, enabled })),
-          body: tab.bodyType === "none" ? null : tab.body,
+            .map(({ key, value, enabled }) => ({
+              key: sub(key),
+              value: sub(value),
+              enabled,
+            })),
+          body: tab.bodyType === "none" ? null : sub(tab.body),
           followRedirects: true,
         });
         get().update(id, { loading: false, response, error: undefined });
@@ -473,6 +525,27 @@ export const useStore = create<AppState>((set, get) => {
           p.id === projectId ? { ...p, activeEnvId: envId } : p,
         ),
         expanded: { ...s.expanded, [envId]: true },
+      }));
+      persist(projectId);
+    },
+
+    // ---- environment variables ----
+    varsEditor: null,
+    openVarsEditor: (projectId, envId) => set({ varsEditor: { projectId, envId } }),
+    closeVarsEditor: () => set({ varsEditor: null }),
+
+    setEnvVariables: (projectId, envId, variables) => {
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id === projectId
+            ? {
+                ...p,
+                environments: p.environments.map((e) =>
+                  e.id === envId ? { ...e, variables } : e,
+                ),
+              }
+            : p,
+        ),
       }));
       persist(projectId);
     },
