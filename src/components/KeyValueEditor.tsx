@@ -9,8 +9,9 @@ interface Props {
 }
 
 /**
- * Editable key/value table (used for query params and headers). Keeps a
- * trailing blank row so there is always somewhere to type a new entry.
+ * Editable key/value/notes table (used for query params, headers and
+ * variables). Keeps a trailing blank row so there is always somewhere to type a
+ * new entry. The notes column is metadata only and never sent.
  */
 export default function KeyValueEditor({
   rows,
@@ -20,8 +21,13 @@ export default function KeyValueEditor({
 }: Props) {
   function ensureTrailingBlank(next: KeyValue[]): KeyValue[] {
     const last = next[next.length - 1];
+    // A row counts as "used" once it has a key or value (a note alone doesn't
+    // spawn a new blank row).
     if (!last || last.key || last.value) {
-      return [...next, { id: nanoid(), key: "", value: "", enabled: true }];
+      return [
+        ...next,
+        { id: nanoid(), key: "", value: "", enabled: true, note: "" },
+      ];
     }
     return next;
   }
@@ -60,6 +66,12 @@ export default function KeyValueEditor({
             placeholder={valuePlaceholder}
             value={row.value}
             onChange={(e) => updateRow(row.id, { value: e.target.value })}
+          />
+          <input
+            className="kv-input kv-note"
+            placeholder="Notes"
+            value={row.note ?? ""}
+            onChange={(e) => updateRow(row.id, { note: e.target.value })}
           />
           <button
             className="kv-remove"

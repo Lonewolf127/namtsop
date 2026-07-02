@@ -24,6 +24,8 @@ export interface KeyValue {
   key: string;
   value: string;
   enabled: boolean;
+  /** Free-text note describing this row. Metadata only — never sent. */
+  note?: string;
 }
 
 /** The reusable, persistable definition of a single HTTP request. */

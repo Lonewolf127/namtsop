@@ -44,7 +44,7 @@ const REQUEST_KEYS: (keyof RequestData)[] = [
 ];
 
 function emptyRow(): KeyValue {
-  return { id: nanoid(), key: "", value: "", enabled: true };
+  return { id: nanoid(), key: "", value: "", enabled: true, note: "" };
 }
 
 function emptyRequest(): RequestData {

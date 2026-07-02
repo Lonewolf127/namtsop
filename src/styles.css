@@ -629,6 +629,15 @@ button {
   border-bottom-color: var(--accent);
 }
 
+/* Notes column: metadata only, styled a touch dimmer/italic. */
+.kv-note {
+  color: var(--text-dim);
+}
+.kv-note::placeholder {
+  font-style: italic;
+  color: var(--muted);
+}
+
 .kv-remove {
   background: none;
   border: none;
