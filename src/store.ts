@@ -1,16 +1,21 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
+import { save, open } from "@tauri-apps/plugin-dialog";
 import {
   DEFAULT_ENV_NAMES,
   type BodyType,
   type Environment,
+  type ExportBundle,
   type HistoryEntry,
   type KeyValue,
   type Method,
   type Project,
   type RequestData,
   type RequestTab,
+  type ScratchFile,
+  type ScratchTab,
   type Settings,
+  type Tab,
   type TreeNode,
 } from "./types";
 import {
@@ -19,10 +24,14 @@ import {
   deleteProject as apiDeleteProject,
   listProjects,
   loadHistory,
+  loadScratch,
   loadSettings,
+  readTextFile,
+  saveScratch,
   saveSettings,
   saveProject,
   sendRequest,
+  writeTextFile,
 } from "./lib/api";
 import { buildVarMap, substitute } from "./lib/vars";
 
@@ -59,7 +68,31 @@ function emptyRequest(): RequestData {
 }
 
 export function newTab(): RequestTab {
-  return { id: nanoid(), name: "Untitled", loading: false, ...emptyRequest() };
+  return {
+    kind: "request",
+    id: nanoid(),
+    name: "Untitled",
+    loading: false,
+    ...emptyRequest(),
+  };
+}
+
+/** Regenerate all ids in a project (used on import to avoid collisions). */
+function reidProject(p: Project): Project {
+  const environments = (p.environments ?? []).map((e) => ({
+    ...e,
+    id: nanoid(),
+    nodes: cloneNodes(e.nodes ?? []),
+    variables: (e.variables ?? []).map((v) => ({ ...v, id: nanoid() })),
+  }));
+  return {
+    id: nanoid(),
+    name: p.name ?? "Imported Project",
+    environments,
+    globals: (p.globals ?? []).map((v) => ({ ...v, id: nanoid() })),
+    activeEnvId: environments[0]?.id ?? "",
+    version: 2,
+  };
 }
 
 function extractRequest(tab: RequestTab): RequestData {
@@ -238,9 +271,10 @@ function schedulePersist(getProject: () => Project | undefined, id: string) {
 
 interface AppState {
   ready: boolean;
-  tabs: RequestTab[];
+  tabs: Tab[];
   activeId: string;
   projects: Project[];
+  scratch: ScratchFile[];
   expanded: Record<string, boolean>;
   settings: Settings;
   /** Lazily-loaded history cache, keyed by request node id. */
@@ -260,6 +294,16 @@ interface AppState {
   setActive: (id: string) => void;
   update: (id: string, patch: Partial<RequestTab>) => void;
   send: (id: string) => Promise<void>;
+
+  // scratch files
+  addScratchFile: () => void;
+  updateScratchFile: (id: string, patch: Partial<ScratchFile>) => void;
+  deleteScratchFile: (id: string) => void;
+  openScratch: (scratchId: string) => void;
+
+  // import / export
+  exportRequests: () => Promise<void>;
+  importRequests: () => Promise<void>;
 
   // drag & drop (ephemeral: id of the current drop target for highlighting)
   dragOverId: string | null;
@@ -354,6 +398,7 @@ export const useStore = create<AppState>((set, get) => {
     tabs: [first],
     activeId: first.id,
     projects: [],
+    scratch: [],
     expanded: {},
     settings: { historyEnabled: true, sidebarCollapsed: false },
     history: {},
@@ -392,6 +437,12 @@ export const useStore = create<AppState>((set, get) => {
       } catch (e) {
         console.error("failed to load projects", e);
         set({ ready: true });
+      }
+      try {
+        const scratch = await loadScratch();
+        if (Array.isArray(scratch) && scratch.length) set({ scratch });
+      } catch (e) {
+        console.error("failed to load scratch files", e);
       }
     },
 
@@ -447,10 +498,13 @@ export const useStore = create<AppState>((set, get) => {
 
     update: (id, patch) => {
       set((s) => ({
-        tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+        tabs: s.tabs.map((t) =>
+          t.id === id && t.kind === "request" ? { ...t, ...patch } : t,
+        ),
       }));
       const tab = get().tabs.find((t) => t.id === id);
-      if (!tab?.projectId || !tab.envId || !tab.nodeId) return;
+      if (tab?.kind !== "request") return;
+      if (!tab.projectId || !tab.envId || !tab.nodeId) return;
       if (!REQUEST_KEYS.some((k) => k in patch)) return;
       const nodeId = tab.nodeId;
       const request = extractRequest(tab);
@@ -461,7 +515,7 @@ export const useStore = create<AppState>((set, get) => {
 
     send: async (id) => {
       const tab = get().tabs.find((t) => t.id === id);
-      if (!tab || !tab.url.trim()) return;
+      if (tab?.kind !== "request" || !tab.url.trim()) return;
       get().update(id, { loading: true, error: undefined });
 
       // Resolve {{variables}}: project globals first, then the request's own
@@ -567,7 +621,7 @@ export const useStore = create<AppState>((set, get) => {
       set((s) => ({
         projects: s.projects.filter((p) => p.id !== id),
         tabs: s.tabs.map((t) =>
-          t.projectId === id
+          t.kind === "request" && t.projectId === id
             ? { ...t, projectId: undefined, envId: undefined, nodeId: undefined }
             : t,
         ),
@@ -616,7 +670,7 @@ export const useStore = create<AppState>((set, get) => {
           return { ...p, environments, activeEnvId };
         }),
         tabs: s.tabs.map((t) =>
-          t.envId === envId
+          t.kind === "request" && t.envId === envId
             ? { ...t, projectId: undefined, envId: undefined, nodeId: undefined }
             : t,
         ),
@@ -717,7 +771,9 @@ export const useStore = create<AppState>((set, get) => {
         mapNode(nodes, nodeId, (n) => ({ ...n, name })),
       );
       set((s) => ({
-        tabs: s.tabs.map((t) => (t.nodeId === nodeId ? { ...t, name } : t)),
+        tabs: s.tabs.map((t) =>
+          t.kind === "request" && t.nodeId === nodeId ? { ...t, name } : t,
+        ),
       }));
     },
 
@@ -740,7 +796,7 @@ export const useStore = create<AppState>((set, get) => {
         return {
           history,
           tabs: s.tabs.map((t) =>
-            t.nodeId === nodeId
+            t.kind === "request" && t.nodeId === nodeId
               ? {
                   ...t,
                   projectId: undefined,
@@ -794,7 +850,7 @@ export const useStore = create<AppState>((set, get) => {
           fromEnvId === toEnvId
             ? s.tabs
             : s.tabs.map((t) =>
-                t.nodeId && movedIds.has(t.nodeId)
+                t.kind === "request" && t.nodeId && movedIds.has(t.nodeId)
                   ? { ...t, envId: toEnvId }
                   : t,
               );
@@ -814,7 +870,9 @@ export const useStore = create<AppState>((set, get) => {
     },
 
     openRequest: (projectId, envId, nodeId) => {
-      const existing = get().tabs.find((t) => t.nodeId === nodeId);
+      const existing = get().tabs.find(
+        (t) => t.kind === "request" && t.nodeId === nodeId,
+      );
       if (existing) {
         set({ activeId: existing.id });
         return;
@@ -824,6 +882,7 @@ export const useStore = create<AppState>((set, get) => {
       const node = env && findNode(env.nodes, nodeId);
       if (!node || node.type !== "request" || !node.request) return;
       const tab: RequestTab = {
+        kind: "request",
         id: nanoid(),
         name: node.name,
         projectId,
@@ -837,7 +896,7 @@ export const useStore = create<AppState>((set, get) => {
 
     saveScratchTab: (tabId) => {
       const tab = get().tabs.find((t) => t.id === tabId);
-      if (!tab || tab.nodeId) return;
+      if (tab?.kind !== "request" || tab.nodeId) return;
 
       // Ensure there's a project + environment to save into.
       let project = get().projects[0];
@@ -865,17 +924,150 @@ export const useStore = create<AppState>((set, get) => {
       mutateEnv(projectId, envId, (nodes) => insertChild(nodes, null, node));
       set((s) => ({
         tabs: s.tabs.map((t) =>
-          t.id === tabId
+          t.id === tabId && t.kind === "request"
             ? { ...t, projectId, envId, nodeId, name: node.name }
             : t,
         ),
       }));
     },
+
+    // ---- scratch files ----
+    addScratchFile: () => {
+      const file: ScratchFile = {
+        id: nanoid(),
+        name: "scratch",
+        content: "",
+        language: "json",
+      };
+      const tab: ScratchTab = {
+        kind: "scratch",
+        id: nanoid(),
+        name: file.name,
+        scratchId: file.id,
+      };
+      set((s) => ({
+        scratch: [...s.scratch, file],
+        tabs: [...s.tabs, tab],
+        activeId: tab.id,
+      }));
+      saveScratch(get().scratch).catch((e) => console.error(e));
+    },
+
+    updateScratchFile: (id, patch) => {
+      set((s) => ({
+        scratch: s.scratch.map((f) => (f.id === id ? { ...f, ...patch } : f)),
+        // Keep the tab title in sync when the file is renamed.
+        tabs:
+          patch.name === undefined
+            ? s.tabs
+            : s.tabs.map((t) =>
+                t.kind === "scratch" && t.scratchId === id
+                  ? { ...t, name: patch.name! }
+                  : t,
+              ),
+      }));
+      // Debounce a single scratch-file save.
+      const key = "scratch-save";
+      const existing = saveTimers.get(key);
+      if (existing) clearTimeout(existing);
+      saveTimers.set(
+        key,
+        setTimeout(() => {
+          saveTimers.delete(key);
+          saveScratch(get().scratch).catch((e) => console.error(e));
+        }, 400),
+      );
+    },
+
+    deleteScratchFile: (id) => {
+      set((s) => ({
+        scratch: s.scratch.filter((f) => f.id !== id),
+        tabs: s.tabs.filter(
+          (t) => !(t.kind === "scratch" && t.scratchId === id),
+        ),
+      }));
+      // Never leave zero tabs open.
+      if (get().tabs.length === 0) get().addTab();
+      else if (!get().tabs.some((t) => t.id === get().activeId))
+        set({ activeId: get().tabs[get().tabs.length - 1].id });
+      saveScratch(get().scratch).catch((e) => console.error(e));
+    },
+
+    openScratch: (scratchId) => {
+      const existing = get().tabs.find(
+        (t) => t.kind === "scratch" && t.scratchId === scratchId,
+      );
+      if (existing) {
+        set({ activeId: existing.id });
+        return;
+      }
+      const file = get().scratch.find((f) => f.id === scratchId);
+      if (!file) return;
+      const tab: ScratchTab = {
+        kind: "scratch",
+        id: nanoid(),
+        name: file.name,
+        scratchId,
+      };
+      set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id }));
+    },
+
+    // ---- import / export ----
+    exportRequests: async () => {
+      const bundle: ExportBundle = {
+        app: "namtsop",
+        kind: "requests-export",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        projects: get().projects,
+      };
+      try {
+        const path = await save({
+          defaultPath: "namtsop-requests.json",
+          filters: [{ name: "namtsop requests", extensions: ["json"] }],
+        });
+        if (!path) return;
+        await writeTextFile(path, JSON.stringify(bundle, null, 2));
+      } catch (e) {
+        console.error("export failed", e);
+      }
+    },
+
+    importRequests: async () => {
+      try {
+        const path = await open({
+          multiple: false,
+          filters: [{ name: "namtsop requests", extensions: ["json"] }],
+        });
+        if (!path || typeof path !== "string") return;
+        const text = await readTextFile(path);
+        const data = JSON.parse(text) as Partial<ExportBundle>;
+        const incoming = Array.isArray(data.projects) ? data.projects : [];
+        if (incoming.length === 0) return;
+        // Re-id everything so imports never collide with existing projects.
+        const imported = incoming.map((p) => reidProject(p));
+        set((s) => ({
+          projects: [...s.projects, ...imported],
+          expanded: {
+            ...s.expanded,
+            ...Object.fromEntries(
+              imported.flatMap((p) => [
+                [p.id, true],
+                [p.activeEnvId, true],
+              ]),
+            ),
+          },
+        }));
+        for (const p of imported) saveProject(p).catch((e) => console.error(e));
+      } catch (e) {
+        console.error("import failed", e);
+      }
+    },
   };
 });
 
 /** Convenience selector for the currently active tab. */
-export function useActiveTab(): RequestTab {
+export function useActiveTab(): Tab {
   return useStore((s) => s.tabs.find((t) => t.id === s.activeId)!);
 }
 

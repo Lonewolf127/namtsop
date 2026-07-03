@@ -45,10 +45,105 @@ button {
   cursor: pointer;
 }
 
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
 .app {
+  flex: 1;
   display: flex;
   flex-direction: row;
-  height: 100vh;
+  min-height: 0;
+}
+
+/* ---------- Top menu bar ---------- */
+.menubar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 0 8px;
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.brand {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-right: 10px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.menu {
+  position: relative;
+}
+.menu-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 5px;
+}
+.menu-btn:hover,
+.menu-btn.active {
+  background: var(--border);
+  color: var(--text);
+}
+.menu-btn.donate {
+  color: var(--red);
+}
+.menu-btn.donate:hover {
+  background: var(--border);
+}
+.menu-drop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 3px;
+  min-width: 190px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  padding: 5px;
+  z-index: 60;
+}
+.menu-drop.wide {
+  min-width: 220px;
+}
+.menu-drop button,
+.menu-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.menu-drop button:hover,
+.menu-check:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 5px 4px;
+}
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
 }
 
 .main {
@@ -459,6 +554,58 @@ button {
 
 .tab-add {
   font-size: 18px;
+}
+.tab-add.scratch {
+  font-size: 13px;
+  color: var(--mauve);
+}
+
+.scratch-chip {
+  font-size: 11px;
+  color: var(--mauve);
+}
+
+/* ---------- Scratch editor ---------- */
+.scratch {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.scratch-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.scratch-name {
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 160px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.scratch-name:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.scratch-langs {
+  display: flex;
+  gap: 12px;
+}
+.scratch-head .format-btn {
+  margin-left: auto;
+}
+.scratch-code {
+  flex: 1;
+  min-height: 0;
 }
 
 /* ---------- URL bar ---------- */

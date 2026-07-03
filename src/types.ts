@@ -122,6 +122,7 @@ export interface Settings {
 
 /** One open request in the workspace (may be linked to a saved tree node). */
 export interface RequestTab extends RequestData {
+  kind: "request";
   id: string;
   name: string;
   /** When set, edits to this tab persist back to the project tree. */
@@ -132,4 +133,33 @@ export interface RequestTab extends RequestData {
   loading: boolean;
   response?: HttpResponse;
   error?: string;
+}
+
+export type ScratchLang = "text" | "json" | "xml";
+
+/** A free-form scratch buffer, unrelated to any request. */
+export interface ScratchFile {
+  id: string;
+  name: string;
+  content: string;
+  language: ScratchLang;
+}
+
+/** An open scratch-file tab. Content lives in the scratch store by `scratchId`. */
+export interface ScratchTab {
+  kind: "scratch";
+  id: string;
+  name: string;
+  scratchId: string;
+}
+
+export type Tab = RequestTab | ScratchTab;
+
+/** Shape of an exported requests file. */
+export interface ExportBundle {
+  app: "namtsop";
+  kind: "requests-export";
+  version: number;
+  exportedAt: string;
+  projects: Project[];
 }

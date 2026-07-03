@@ -41,6 +41,9 @@ produces them automatically.
 - Response viewer: status, time, size, raw headers, **Pretty/Raw** toggle
 - **Format / beautify** JSON & XML in both the response and the request body
 - Collapsible **Projects** sidebar (fold to a ribbon to maximize the request area)
+- **Import / Export** requests to a JSON file (File menu)
+- **Scratch files** — free-form buffers you can paste into and format (JSON/XML)
+- Top menu bar: **File / Help / Donate / Settings**
 - Syntax highlighting for JSON / XML / HTML
 - Per-request **history** — payload + response for each send, with restore
 - Default environments: **local**, dev, stg, prod

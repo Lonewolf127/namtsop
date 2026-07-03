@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { HistoryEntry, HttpResponse, Project, Settings } from "../types";
+import type {
+  HistoryEntry,
+  HttpResponse,
+  Project,
+  ScratchFile,
+  Settings,
+} from "../types";
 
 /** Payload sent to the Rust engine (matches serde `HttpRequest`). */
 export interface SendRequestPayload {
@@ -56,4 +62,24 @@ export function appendHistory(
 
 export function clearHistory(nodeId: string): Promise<void> {
   return invoke("clear_history", { nodeId });
+}
+
+// ---- scratch files ----
+
+export function loadScratch(): Promise<ScratchFile[]> {
+  return invoke<ScratchFile[]>("load_scratch");
+}
+
+export function saveScratch(files: ScratchFile[]): Promise<void> {
+  return invoke("save_scratch", { files });
+}
+
+// ---- generic file read/write (path chosen via dialog) ----
+
+export function readTextFile(path: string): Promise<string> {
+  return invoke<string>("read_text_file", { path });
+}
+
+export function writeTextFile(path: string, contents: string): Promise<void> {
+  return invoke("write_text_file", { path, contents });
 }

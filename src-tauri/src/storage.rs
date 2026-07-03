@@ -175,3 +175,31 @@ pub fn clear_history(app: AppHandle, node_id: String) -> Result<(), String> {
     }
     Ok(())
 }
+
+// ---- scratch files ----
+
+#[tauri::command]
+pub fn load_scratch(app: AppHandle) -> Result<Vec<Value>, String> {
+    let path = data_dir(&app)?.join("scratch.json");
+    match fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).map_err(|e| e.to_string()),
+        Err(_) => Ok(Vec::new()),
+    }
+}
+
+#[tauri::command]
+pub fn save_scratch(app: AppHandle, files: Value) -> Result<(), String> {
+    atomic_write(&data_dir(&app)?, "scratch.json", &files)
+}
+
+// ---- generic file read/write (paths chosen via the dialog plugin) ----
+
+#[tauri::command]
+pub fn read_text_file(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("could not read {path}: {e}"))
+}
+
+#[tauri::command]
+pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    fs::write(&path, contents).map_err(|e| format!("could not write {path}: {e}"))
+}
