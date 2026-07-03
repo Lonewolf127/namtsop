@@ -2,6 +2,17 @@ import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import type { Environment, Project, TreeNode } from "../types";
 
+/**
+ * The node currently being dragged. Kept as a module variable (not state) so it
+ * can be read synchronously in drop handlers without re-render timing issues.
+ */
+type DragSource = {
+  projectId: string;
+  envId: string;
+  nodeId: string;
+};
+let dragSource: DragSource | null = null;
+
 /** Inline-editable label used for project, environment and node renames. */
 function EditableName({
   value,
@@ -57,15 +68,55 @@ function NodeRow({
     renameNode,
     deleteNode,
     openRequest,
+    moveNode,
+    dragOverId,
+    setDragOverId,
   } = useStore();
   const isFolder = node.type === "folder";
   const open = expanded[node.id];
 
+  // Folders accept drops (move a node into them). A drop is valid within the
+  // same project and never onto the dragged node itself.
+  const canAcceptDrop = (e: React.DragEvent) => {
+    if (!isFolder || !dragSource) return false;
+    if (dragSource.projectId !== projectId) return false;
+    if (dragSource.nodeId === node.id) return false;
+    e.preventDefault();
+    return true;
+  };
+
   return (
     <div className="tree-branch">
       <div
-        className={`node ${isFolder ? "folder" : "request"}`}
+        className={`node ${isFolder ? "folder" : "request"} ${
+          isFolder && dragOverId === node.id ? "drag-over" : ""
+        }`}
         style={{ paddingLeft: 8 + depth * 14 }}
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation();
+          dragSource = { projectId, envId, nodeId: node.id };
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", node.id);
+        }}
+        onDragEnd={() => {
+          dragSource = null;
+          setDragOverId(null);
+        }}
+        onDragOver={(e) => {
+          if (canAcceptDrop(e) && dragOverId !== node.id) setDragOverId(node.id);
+        }}
+        onDragLeave={(e) => {
+          e.stopPropagation();
+          if (dragOverId === node.id) setDragOverId(null);
+        }}
+        onDrop={(e) => {
+          if (!canAcceptDrop(e)) return;
+          e.stopPropagation();
+          moveNode(dragSource!.projectId, dragSource!.envId, dragSource!.nodeId, envId, node.id);
+          dragSource = null;
+          setDragOverId(null);
+        }}
         onClick={() =>
           isFolder
             ? toggleExpand(node.id)
@@ -158,16 +209,41 @@ function EnvironmentRow({
     duplicateEnvironment,
     setActiveEnv,
     openVarsEditor,
+    moveNode,
+    dragOverId,
+    setDragOverId,
   } = useStore();
   const open = expanded[env.id];
   const isActive = project.activeEnvId === env.id;
   const varCount = env.variables.filter((v) => v.key.trim() && v.enabled).length;
 
+  // The env header accepts drops onto the environment root (same project).
+  const canAcceptDrop = (e: React.DragEvent) => {
+    if (!dragSource || dragSource.projectId !== project.id) return false;
+    e.preventDefault();
+    return true;
+  };
+
   return (
     <div className="env">
       <div
-        className={`node env-head ${isActive ? "active-env" : ""}`}
+        className={`node env-head ${isActive ? "active-env" : ""} ${
+          dragOverId === env.id ? "drag-over" : ""
+        }`}
         style={{ paddingLeft: 22 }}
+        onDragOver={(e) => {
+          if (canAcceptDrop(e) && dragOverId !== env.id) setDragOverId(env.id);
+        }}
+        onDragLeave={() => {
+          if (dragOverId === env.id) setDragOverId(null);
+        }}
+        onDrop={(e) => {
+          if (!canAcceptDrop(e)) return;
+          e.stopPropagation();
+          moveNode(dragSource!.projectId, dragSource!.envId, dragSource!.nodeId, env.id, null);
+          dragSource = null;
+          setDragOverId(null);
+        }}
         onClick={() => toggleExpand(env.id)}
       >
         <span className="chevron">{open ? "▾" : "▸"}</span>

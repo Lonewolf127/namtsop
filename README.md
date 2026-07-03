@@ -72,6 +72,8 @@ UserService                ← project (a microservice)
 - Click a request to open it in a tab. Edits **auto-save** back to that
   environment. The URL bar shows a `Saved · dev` pill so you always know which
   environment you're editing.
+- **Drag & drop** a request or folder into another folder, onto an environment
+  (moves it to that env's root), or across environments in the same project.
 - Ad-hoc requests in a new tab can be filed into a project's active environment
   with **Save**.
 

@@ -260,6 +260,10 @@ interface AppState {
   update: (id: string, patch: Partial<RequestTab>) => void;
   send: (id: string) => Promise<void>;
 
+  // drag & drop (ephemeral: id of the current drop target for highlighting)
+  dragOverId: string | null;
+  setDragOverId: (id: string | null) => void;
+
   // sidebar / tree
   toggleExpand: (id: string) => void;
   createProject: (name?: string) => void;
@@ -298,6 +302,17 @@ interface AppState {
     name: string,
   ) => void;
   deleteNode: (projectId: string, envId: string, nodeId: string) => void;
+  /**
+   * Move a node (drag & drop) within a project. `toParentId` null = env root.
+   * Source and target environments may differ.
+   */
+  moveNode: (
+    projectId: string,
+    fromEnvId: string,
+    nodeId: string,
+    toEnvId: string,
+    toParentId: string | null,
+  ) => void;
   openRequest: (projectId: string, envId: string, nodeId: string) => void;
   saveScratchTab: (tabId: string) => void;
 }
@@ -499,6 +514,10 @@ export const useStore = create<AppState>((set, get) => {
         record({ error });
       }
     },
+
+    // ---- drag & drop ----
+    dragOverId: null,
+    setDragOverId: (id) => set({ dragOverId: id }),
 
     // ---- sidebar / tree ----
     toggleExpand: (id) =>
@@ -713,6 +732,65 @@ export const useStore = create<AppState>((set, get) => {
         };
       });
       for (const rid of requestIds) apiClearHistory(rid).catch(() => {});
+    },
+
+    moveNode: (projectId, fromEnvId, nodeId, toEnvId, toParentId) => {
+      set((s) => {
+        const project = s.projects.find((p) => p.id === projectId);
+        const fromEnv = project?.environments.find((e) => e.id === fromEnvId);
+        const node = fromEnv && findNode(fromEnv.nodes, nodeId);
+        if (!project || !fromEnv || !node) return s;
+
+        // Collect the moved subtree's ids (for cycle check + tab re-linking).
+        const movedIds = new Set<string>();
+        const collect = (n: TreeNode) => {
+          movedIds.add(n.id);
+          n.children?.forEach(collect);
+        };
+        collect(node);
+
+        // Can't drop a folder into itself or one of its descendants, and
+        // dropping onto itself is a no-op.
+        if (toParentId && movedIds.has(toParentId)) return s;
+
+        const environments = project.environments.map((e) => {
+          if (e.id === fromEnvId && e.id === toEnvId) {
+            return {
+              ...e,
+              nodes: insertChild(removeNode(e.nodes, nodeId), toParentId, node),
+            };
+          }
+          if (e.id === fromEnvId) {
+            return { ...e, nodes: removeNode(e.nodes, nodeId) };
+          }
+          if (e.id === toEnvId) {
+            return { ...e, nodes: insertChild(e.nodes, toParentId, node) };
+          }
+          return e;
+        });
+
+        // If moved across environments, re-point any open tabs to the new env.
+        const tabs =
+          fromEnvId === toEnvId
+            ? s.tabs
+            : s.tabs.map((t) =>
+                t.nodeId && movedIds.has(t.nodeId)
+                  ? { ...t, envId: toEnvId }
+                  : t,
+              );
+
+        return {
+          projects: s.projects.map((p) =>
+            p.id === projectId ? { ...p, environments } : p,
+          ),
+          tabs,
+          expanded: {
+            ...s.expanded,
+            [toParentId ?? toEnvId]: true,
+          },
+        };
+      });
+      persist(projectId);
     },
 
     openRequest: (projectId, envId, nodeId) => {

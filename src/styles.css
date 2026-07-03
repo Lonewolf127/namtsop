@@ -124,6 +124,15 @@ button {
   color: var(--text);
 }
 
+/* Drag & drop: highlight a folder/environment when a node is dragged over it. */
+.node.drag-over {
+  background: var(--border);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.node[draggable="true"] {
+  cursor: grab;
+}
+
 .chevron {
   width: 12px;
   font-size: 10px;
