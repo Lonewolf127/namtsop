@@ -38,7 +38,9 @@ produces them automatically.
 - Methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
 - Query params & headers editors (per-row enable/disable)
 - Request body: JSON / Text / XML / Form (auto `Content-Type`)
-- Response viewer: status, time, size, pretty-printed JSON, raw headers
+- Response viewer: status, time, size, raw headers, **Pretty/Raw** toggle
+- **Format / beautify** JSON & XML in both the response and the request body
+- Collapsible **Projects** sidebar (fold to a ribbon to maximize the request area)
 - Syntax highlighting for JSON / XML / HTML
 - Per-request **history** — payload + response for each send, with restore
 - Default environments: **local**, dev, stg, prod

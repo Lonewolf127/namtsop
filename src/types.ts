@@ -116,6 +116,8 @@ export interface Settings {
    * entirely if you'd rather keep things minimal.
    */
   historyEnabled: boolean;
+  /** Whether the Projects sidebar is folded to a thin ribbon. */
+  sidebarCollapsed: boolean;
 }
 
 /** One open request in the workspace (may be linked to a saved tree node). */

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { BodyType, RequestTab } from "../types";
 import { useStore } from "../store";
+import { formatByType } from "../lib/format";
 import KeyValueEditor from "./KeyValueEditor";
 import CodeEditor from "./CodeEditor";
 import HistoryPanel from "./HistoryPanel";
@@ -91,6 +92,21 @@ export default function RequestPanel({ tab }: { tab: RequestTab }) {
                   {b.label}
                 </label>
               ))}
+              {(tab.bodyType === "json" ||
+                tab.bodyType === "xml" ||
+                tab.bodyType === "text") && (
+                <button
+                  className="format-btn"
+                  title="Beautify the body (JSON / XML)"
+                  disabled={!tab.body.trim()}
+                  onClick={() => {
+                    const f = formatByType(tab.body, tab.bodyType);
+                    if (f !== null) update(tab.id, { body: f });
+                  }}
+                >
+                  Format
+                </button>
+              )}
             </div>
             {tab.bodyType === "none" ? (
               <div className="empty">This request has no body.</div>

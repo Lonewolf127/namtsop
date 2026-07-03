@@ -250,6 +250,7 @@ interface AppState {
 
   // settings & history
   setHistoryEnabled: (enabled: boolean) => void;
+  toggleSidebar: () => void;
   loadHistoryFor: (nodeId: string) => Promise<void>;
   clearHistoryFor: (nodeId: string) => void;
 
@@ -354,15 +355,25 @@ export const useStore = create<AppState>((set, get) => {
     activeId: first.id,
     projects: [],
     expanded: {},
-    settings: { historyEnabled: true },
+    settings: { historyEnabled: true, sidebarCollapsed: false },
     history: {},
 
     init: async () => {
       // Settings are tiny; history is NOT loaded here (lazy per request).
       try {
         const s = await loadSettings();
-        if (typeof s.historyEnabled === "boolean")
-          set({ settings: { historyEnabled: s.historyEnabled } });
+        set((prev) => ({
+          settings: {
+            historyEnabled:
+              typeof s.historyEnabled === "boolean"
+                ? s.historyEnabled
+                : prev.settings.historyEnabled,
+            sidebarCollapsed:
+              typeof s.sidebarCollapsed === "boolean"
+                ? s.sidebarCollapsed
+                : prev.settings.sidebarCollapsed,
+          },
+        }));
       } catch (e) {
         console.error("failed to load settings", e);
       }
@@ -386,7 +397,16 @@ export const useStore = create<AppState>((set, get) => {
 
     // ---- settings & history ----
     setHistoryEnabled: (enabled) => {
-      const settings = { historyEnabled: enabled };
+      const settings = { ...get().settings, historyEnabled: enabled };
+      set({ settings });
+      saveSettings(settings).catch((e) => console.error(e));
+    },
+
+    toggleSidebar: () => {
+      const settings = {
+        ...get().settings,
+        sidebarCollapsed: !get().settings.sidebarCollapsed,
+      };
       set({ settings });
       saveSettings(settings).catch((e) => console.error(e));
     },

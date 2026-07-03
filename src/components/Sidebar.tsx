@@ -424,20 +424,47 @@ function ProjectRow({
 export default function Sidebar() {
   const { projects, createProject } = useStore();
   const historyEnabled = useStore((s) => s.settings.historyEnabled);
+  const collapsed = useStore((s) => s.settings.sidebarCollapsed);
   const setHistoryEnabled = useStore((s) => s.setHistoryEnabled);
+  const toggleSidebar = useStore((s) => s.toggleSidebar);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+
+  // Collapsed: a thin ribbon with a project icon that reopens the panel.
+  if (collapsed) {
+    return (
+      <div
+        className="sidebar-rail"
+        title="Show projects"
+        onClick={toggleSidebar}
+      >
+        <button className="rail-btn" aria-label="Show projects">
+          ▤
+        </button>
+        <span className="rail-label">PROJECTS</span>
+      </div>
+    );
+  }
 
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
         <span>Projects</span>
-        <button
-          className="new-project"
-          title="New project"
-          onClick={() => createProject()}
-        >
-          +
-        </button>
+        <div className="sidebar-head-actions">
+          <button
+            className="new-project"
+            title="New project"
+            onClick={() => createProject()}
+          >
+            +
+          </button>
+          <button
+            className="collapse-btn"
+            title="Collapse panel"
+            onClick={toggleSidebar}
+          >
+            ◀
+          </button>
+        </div>
       </div>
       <div className="sidebar-tree">
         {projects.length === 0 ? (
