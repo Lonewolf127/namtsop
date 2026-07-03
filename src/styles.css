@@ -93,10 +93,12 @@ button {
   background: var(--border);
   color: var(--text);
 }
-.menu-btn.donate {
-  color: var(--red);
+.menu-btn.coffee {
+  margin-left: auto; /* pin to the far right of the menu bar */
+  color: var(--yellow);
+  font-weight: 600;
 }
-.menu-btn.donate:hover {
+.menu-btn.coffee:hover {
   background: var(--border);
 }
 .menu-drop {
@@ -555,7 +557,9 @@ button {
 .tab-add {
   font-size: 18px;
 }
-.tab-add.scratch {
+.tab-add.tab-new-scratch {
+  margin-left: auto; /* pin to the far right of the tab bar */
+  flex: 0 0 auto; /* content-sized; do not stretch */
   font-size: 13px;
   color: var(--mauve);
 }

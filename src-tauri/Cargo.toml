@@ -1,6 +1,6 @@
 [package]
 name = "namtsop"
-version = "0.1.5"
+version = "0.1.6"
 description = "A fast, lightweight HTTP client"
 authors = ["you"]
 edition = "2021"

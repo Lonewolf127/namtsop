@@ -45,7 +45,7 @@ function TabBar() {
         +
       </button>
       <button
-        className="tab-add scratch"
+        className="tab-add tab-new-scratch"
         onClick={addScratchFile}
         title="New scratch file"
       >

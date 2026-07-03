@@ -5,8 +5,8 @@ import { useStore } from "../store";
 type Menu = "file" | "help" | "settings" | null;
 
 const REPO_URL = "https://github.com/Lonewolf127/namtsop";
-// Change this to your own donation link (Sponsors, Buy Me a Coffee, etc.).
-const DONATE_URL = "https://github.com/sponsors/Lonewolf127";
+// Change this to your own Buy Me a Coffee page (or any donation link).
+const COFFEE_URL = "https://www.buymeacoffee.com/lonewolf127";
 
 function externalOpen(url: string) {
   openUrl(url).catch((e) => console.error("open url failed", e));
@@ -74,14 +74,6 @@ export default function MenuBar() {
         )}
       </div>
 
-      <button
-        className="menu-btn donate"
-        onClick={() => run(() => externalOpen(DONATE_URL))}
-        title="Support development"
-      >
-        ♥ Donate
-      </button>
-
       <div className="menu">
         <button
           className={`menu-btn ${openMenu === "settings" ? "active" : ""}`}
@@ -102,6 +94,14 @@ export default function MenuBar() {
           </div>
         )}
       </div>
+
+      <button
+        className="menu-btn coffee"
+        onClick={() => run(() => externalOpen(COFFEE_URL))}
+        title="Buy me a coffee"
+      >
+        ☕ Buy me a coffee
+      </button>
 
       {openMenu && <div className="menu-backdrop" onClick={close} />}
     </div>
